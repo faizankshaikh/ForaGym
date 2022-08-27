@@ -138,13 +138,11 @@ class ForaGym(gym.Env):
         self._get_new_day(with_life_points=False)
 
         enc_state = self.encode(sum(self.field_state), self.life_points, self.weather_type)
-        
-        print(sum(self.field_state), self.life_points, self.weather_type, enc_state)
+        P = self.P[enc_state][action]
         
         if action:
             chance = np.random.sample()
             chance = (chance - 0.1) if self.weather_type else chance
-            P = self.P[enc_state][action]
             
             if chance >= P[0][0]:
                 p, new_state, reward, self.is_alive = P[1]
@@ -152,7 +150,7 @@ class ForaGym(gym.Env):
                 p, new_state, reward, self.is_alive = P[0]
         else:
             chance = 0
-            p, new_state, reward, self.is_alive = P
+            p, new_state, reward, self.is_alive = P[0]
 
         _, self.life_points, _ = self.decode(new_state)
         
@@ -161,7 +159,6 @@ class ForaGym(gym.Env):
         return self._get_obs(), reward, self.is_alive, {"chance": chance}
 
     def reset(self, seed=42):
-        super().reset(seed=seed)
         np.random.seed(42)
 
         self.episode_length = 6
