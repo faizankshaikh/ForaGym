@@ -1,5 +1,6 @@
 import gym
 import numpy as np
+
 from gym import spaces
 
 
@@ -15,6 +16,7 @@ class ForaGym(gym.Env):
         self.NUM_FIELDS = 5
         self.NUM_LIFE_POINTS = 7
         self.NUM_WEATHER_TYPES = 2
+        self.BAD_WEATHER_EFFECT = 0.1
         self.NUM_ACTIONS = len(self.ACTION_DICT)
 
         self.is_alive = True
@@ -43,20 +45,28 @@ class ForaGym(gym.Env):
         self._get_transition_probs()
 
     def _get_new_day(self, with_life_points=True):
-        self.field_state = self.observation_space["field_state"].sample()
+        field_state_sum = 0
+        while not field_state_sum:
+            self.field_state = self.observation_space["field_state"].sample()
+            field_state_sum = sum(self.field_state)
+
         self.weather_type = self.observation_space["weather_type"].sample()
-        self.prob_success = sum(self.field_state) / len(self.field_state)
-        self.prob_failure = 1 - self.prob_success
 
         if with_life_points:
-            self.life_points = self.observation_space["life_points"].sample()
+            self.life_points = 0
+            while not self.life_points:
+                self.life_points = self.observation_space["life_points"].sample()
 
     def _get_transition_probs(self):
         for field in range(self.NUM_FIELDS + 1):
             for life_point in range(self.NUM_LIFE_POINTS):
                 for weather in range(self.NUM_WEATHER_TYPES):
-                    prob_success = field / self.NUM_FIELDS
-                    prob_failure = 1 - prob_success
+                    prob_success = np.clip(
+                        field / self.NUM_FIELDS - weather*self.BAD_WEATHER_EFFECT, 0, 1
+                    )
+                    prob_failure = np.clip(
+                        1 - prob_success, 0, 1
+                    )
                     enc_state = self.encode(field, life_point, weather)
                     for action in range(self.NUM_ACTIONS):
                         if not life_point:
@@ -142,7 +152,6 @@ class ForaGym(gym.Env):
         
         if action:
             chance = np.random.sample()
-            chance = (chance - 0.1) if self.weather_type else chance
             
             if chance >= P[0][0]:
                 p, new_state, reward, self.is_alive = P[1]
@@ -156,7 +165,10 @@ class ForaGym(gym.Env):
         
         self.episode_length -= 1
 
-        return self._get_obs(), reward, self.is_alive, {"chance": chance}
+        if self.episode_length <= 0:
+            self.is_alive = False
+
+        return self._get_obs(), reward, not self.is_alive, {"chance": chance}
 
     def reset(self, seed=42):
         np.random.seed(42)
