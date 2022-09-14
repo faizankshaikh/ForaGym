@@ -44,6 +44,8 @@ class ForaGym(gym.Env):
             self.NUM_DAYS_LEFT * self.NUM_LIFE_POINTS * (self.NUM_FIELDS + 1) * self.NUM_WEATHER_TYPES
         )
 
+        self.NUM_INTERNAL_STATES = (self.NUM_FIELDS + 1) * self.NUM_WEATHER_TYPES
+
         self.is_dead = False
         
         self.P = {
@@ -75,8 +77,8 @@ class ForaGym(gym.Env):
 
 
     def _get_transition_probs(self):
-        for days_left in range(self.NUM_DAYS_LEFT):
-            for life_point in range(self.NUM_LIFE_POINTS):
+        for days_left in range(1, self.NUM_DAYS_LEFT):
+            for life_point in range(1, self.NUM_LIFE_POINTS):
                 for field in range(self.NUM_FIELDS + 1):
                     for weather in range(self.NUM_WEATHER_TYPES):
                         prob_success = np.clip(field / self.NUM_FIELDS - weather*self.BAD_WEATHER_EFFECT, 0, 1)
@@ -94,9 +96,9 @@ class ForaGym(gym.Env):
                                 new_states = list(product([new_days_left_failure], [new_life_point_failure], new_field_failure, new_weather_failure))
                                 for new_days_left, new_life_point, new_field, new_weather in new_states:
                                     if not new_life_point:
-                                        self.P[enc_state][action].append([prob_failure / len(new_states), 0, -1, True])
+                                        self.P[enc_state][action].append([prob_failure / len(new_states), enc_state, -1, True])
                                     elif not new_days_left:
-                                        self.P[enc_state][action].append([prob_failure / len(new_states), 0, 0, True])
+                                        self.P[enc_state][action].append([prob_failure / len(new_states), enc_state, 0, True])
                                     else:
                                         new_enc_state = self.encode(new_days_left, new_life_point, new_field, new_weather)
                                         self.P[enc_state][action].append([prob_failure / len(new_states), new_enc_state, 0, False])
@@ -108,9 +110,9 @@ class ForaGym(gym.Env):
                                 new_states = list(product([new_days_left_success], [new_life_point_success], new_field_success, new_weather_success))
                                 for new_days_left, new_life_point, new_field, new_weather in new_states:
                                     if not new_life_point:
-                                        self.P[enc_state][action].append([prob_success / len(new_states), 0, -1, True])
+                                        self.P[enc_state][action].append([prob_success / len(new_states), enc_state, -1, True])
                                     elif not new_days_left:
-                                        self.P[enc_state][action].append([prob_success / len(new_states), 0, 0, True])
+                                        self.P[enc_state][action].append([prob_success / len(new_states), enc_state, 0, True])
                                     else:
                                         new_enc_state = self.encode(new_days_left, new_life_point, new_field, new_weather)
                                         self.P[enc_state][action].append([prob_success / len(new_states), new_enc_state, 0, False])
@@ -123,9 +125,9 @@ class ForaGym(gym.Env):
                                 new_states = list(product([new_days_left_wait], [new_life_point_wait], new_field_wait, new_weather_wait))
                                 for new_days_left, new_life_point, new_field, new_weather in new_states:
                                     if not new_life_point:
-                                        self.P[enc_state][action].append([1.0 / len(new_states), 0, -1, True])
+                                        self.P[enc_state][action].append([1.0 / len(new_states), enc_state, -1, True])
                                     elif not new_days_left:
-                                        self.P[enc_state][action].append([1.0 / len(new_states), 0, 0, True])
+                                        self.P[enc_state][action].append([1.0 / len(new_states), enc_state, 0, True])
                                     else:
                                         new_enc_state = self.encode(new_days_left, new_life_point, new_field, new_weather)
                                         self.P[enc_state][action].append([1.0 / len(new_states), new_enc_state, 0, False])
@@ -176,8 +178,8 @@ class ForaGym(gym.Env):
         if action:
             chance = np.random.sample()
             
-            if chance >= P[0][0]:
-                prob_transition, new_state, reward, self.is_dead = P[1]
+            if chance >= P[0][0]*(self.NUM_INTERNAL_STATES):
+                prob_transition, new_state, reward, self.is_dead = P[self.NUM_INTERNAL_STATES]
             else:
                 prob_transition, new_state, reward, self.is_dead = P[0]
         else:
