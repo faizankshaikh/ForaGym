@@ -24,7 +24,7 @@ class ForaGym(gym.Env):
         self.WEATHER_DICT = {0: "Clear", 1: "Rainy"}
 
         self.NUM_DAYS_LEFT = 6
-        self.NUM_LIFE_POINTS = 7
+        self.NUM_LIFE_POINTS = 5
         self.NUM_FIELDS = 5
         self.NUM_WEATHER_TYPES = 2
         self.BAD_WEATHER_EFFECT = 0.1
@@ -44,7 +44,7 @@ class ForaGym(gym.Env):
             self.NUM_DAYS_LEFT * self.NUM_LIFE_POINTS * (self.NUM_FIELDS + 1) * self.NUM_WEATHER_TYPES
         )
 
-        self.NUM_INTERNAL_STATES = (self.NUM_FIELDS + 1) * self.NUM_WEATHER_TYPES
+        self.NUM_INTERNAL_STATES = self.NUM_FIELDS * self.NUM_WEATHER_TYPES
 
         self.is_dead = False
         
@@ -79,7 +79,7 @@ class ForaGym(gym.Env):
     def _get_transition_probs(self):
         for days_left in range(1, self.NUM_DAYS_LEFT):
             for life_point in range(1, self.NUM_LIFE_POINTS):
-                for field in range(self.NUM_FIELDS + 1):
+                for field in range(1, self.NUM_FIELDS + 1):
                     for weather in range(self.NUM_WEATHER_TYPES):
                         prob_success = np.clip(field / self.NUM_FIELDS - weather*self.BAD_WEATHER_EFFECT, 0, 1)
                         prob_failure = np.clip(1 - prob_success, 0, 1)
@@ -91,45 +91,45 @@ class ForaGym(gym.Env):
                                 # forage but fail
                                 new_days_left_failure = np.clip(days_left - 1, 0, self.NUM_DAYS_LEFT - 1)
                                 new_life_point_failure = np.clip(life_point - 2, 0, self.NUM_LIFE_POINTS - 1)
-                                new_field_failure = list(range(self.NUM_FIELDS + 1))
+                                new_field_failure = list(range(1, self.NUM_FIELDS + 1))
                                 new_weather_failure = list(range(self.NUM_WEATHER_TYPES))
                                 new_states = list(product([new_days_left_failure], [new_life_point_failure], new_field_failure, new_weather_failure))
                                 for new_days_left, new_life_point, new_field, new_weather in new_states:
+                                    new_enc_state = self.encode(new_days_left, new_life_point, new_field, new_weather)
                                     if not new_life_point:
-                                        self.P[enc_state][action].append([prob_failure / len(new_states), enc_state, -1, True])
+                                        self.P[enc_state][action].append([prob_failure / len(new_states), new_enc_state, -1, True])
                                     elif not new_days_left:
-                                        self.P[enc_state][action].append([prob_failure / len(new_states), enc_state, 0, True])
+                                        self.P[enc_state][action].append([prob_failure / len(new_states), new_enc_state, 1, True])
                                     else:
-                                        new_enc_state = self.encode(new_days_left, new_life_point, new_field, new_weather)
                                         self.P[enc_state][action].append([prob_failure / len(new_states), new_enc_state, 0, False])
                                 # forage and found
                                 new_days_left_success = np.clip(days_left - 1, 0, self.NUM_DAYS_LEFT - 1)
                                 new_life_point_success = np.clip(life_point + 1, 0, self.NUM_LIFE_POINTS - 1)
-                                new_field_success = list(range(self.NUM_FIELDS + 1))
+                                new_field_success = list(range(1, self.NUM_FIELDS + 1))
                                 new_weather_success = list(range(self.NUM_WEATHER_TYPES))
                                 new_states = list(product([new_days_left_success], [new_life_point_success], new_field_success, new_weather_success))
                                 for new_days_left, new_life_point, new_field, new_weather in new_states:
+                                    new_enc_state = self.encode(new_days_left, new_life_point, new_field, new_weather)
                                     if not new_life_point:
-                                        self.P[enc_state][action].append([prob_success / len(new_states), enc_state, -1, True])
+                                        self.P[enc_state][action].append([prob_success / len(new_states), new_enc_state, -1, True])
                                     elif not new_days_left:
-                                        self.P[enc_state][action].append([prob_success / len(new_states), enc_state, 0, True])
+                                        self.P[enc_state][action].append([prob_success / len(new_states), new_enc_state, 1, True])
                                     else:
-                                        new_enc_state = self.encode(new_days_left, new_life_point, new_field, new_weather)
                                         self.P[enc_state][action].append([prob_success / len(new_states), new_enc_state, 0, False])
                             else:
                                 # wait
                                 new_days_left_wait = np.clip(days_left - 1, 0, self.NUM_DAYS_LEFT - 1)
                                 new_life_point_wait = np.clip(life_point - 1, 0, self.NUM_LIFE_POINTS - 1)
-                                new_field_wait = list(range(self.NUM_FIELDS + 1))
+                                new_field_wait = list(range(1, self.NUM_FIELDS + 1))
                                 new_weather_wait = list(range(self.NUM_WEATHER_TYPES))
                                 new_states = list(product([new_days_left_wait], [new_life_point_wait], new_field_wait, new_weather_wait))
                                 for new_days_left, new_life_point, new_field, new_weather in new_states:
+                                    new_enc_state = self.encode(new_days_left, new_life_point, new_field, new_weather)
                                     if not new_life_point:
-                                        self.P[enc_state][action].append([1.0 / len(new_states), enc_state, -1, True])
+                                        self.P[enc_state][action].append([1.0 / len(new_states), new_enc_state, -1, True])
                                     elif not new_days_left:
-                                        self.P[enc_state][action].append([1.0 / len(new_states), enc_state, 0, True])
+                                        self.P[enc_state][action].append([1.0 / len(new_states), new_enc_state, 1, True])
                                     else:
-                                        new_enc_state = self.encode(new_days_left, new_life_point, new_field, new_weather)
                                         self.P[enc_state][action].append([1.0 / len(new_states), new_enc_state, 0, False])
 
     def encode(self, days_left, life_point, field, weather):
