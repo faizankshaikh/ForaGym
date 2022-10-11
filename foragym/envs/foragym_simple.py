@@ -99,7 +99,7 @@ class ForaGym(gym.Env):
                                     if not new_life_point:
                                         self.P[enc_state][action].append([prob_failure / len(new_states), new_enc_state, -1, True])
                                     elif not new_days_left:
-                                        self.P[enc_state][action].append([prob_failure / len(new_states), new_enc_state, 1, True])
+                                        self.P[enc_state][action].append([prob_failure / len(new_states), new_enc_state, 0, True])
                                     else:
                                         self.P[enc_state][action].append([prob_failure / len(new_states), new_enc_state, 0, False])
                                 # forage and found
@@ -113,7 +113,7 @@ class ForaGym(gym.Env):
                                     if not new_life_point:
                                         self.P[enc_state][action].append([prob_success / len(new_states), new_enc_state, -1, True])
                                     elif not new_days_left:
-                                        self.P[enc_state][action].append([prob_success / len(new_states), new_enc_state, 1, True])
+                                        self.P[enc_state][action].append([prob_success / len(new_states), new_enc_state, 0, True])
                                     else:
                                         self.P[enc_state][action].append([prob_success / len(new_states), new_enc_state, 0, False])
                             else:
@@ -128,7 +128,7 @@ class ForaGym(gym.Env):
                                     if not new_life_point:
                                         self.P[enc_state][action].append([1.0 / len(new_states), new_enc_state, -1, True])
                                     elif not new_days_left:
-                                        self.P[enc_state][action].append([1.0 / len(new_states), new_enc_state, 1, True])
+                                        self.P[enc_state][action].append([1.0 / len(new_states), new_enc_state, 0, True])
                                     else:
                                         self.P[enc_state][action].append([1.0 / len(new_states), new_enc_state, 0, False])
 
