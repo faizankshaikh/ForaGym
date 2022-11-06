@@ -1,1 +1,2 @@
 from foragym.envs.foragym_simple import ForaGym
+from foragym.envs.foragym_with_threat import ForaGym_with_threat
