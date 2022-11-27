@@ -1,17 +1,16 @@
-import gym
 import numpy as np
+import pandas as pd
 
-from gym import spaces
+from gym import spaces, Env
 from itertools import product
 
-
-class ForaGym_with_threat(gym.Env):
+class ForaGym_with_threat(Env):
     """
     """
 
-    metadata = {"render_modes": ["human"]}
+    metadata = {"render_mode": ["human"]}
 
-    def __init__(self, render_mode=None):
+    def __init__(self, render_mode=None, items_path=""):
         self.render_mode = render_mode
 
         self.action_dict = {0: "wait", 1: "forage"}
@@ -24,294 +23,300 @@ class ForaGym_with_threat(gym.Env):
             "Right environment / Forage failed / Threat encountered",
             "Waited"
         ]
-        self.consequence_dict = dict(zip(np.arange(0, 7), consequences))
+        self.consequences_dict = dict(zip(np.arange(0, 7), consequences))
 
-        self.num_days_left = 8
-        self.num_life_points_left = 6
+        if not items_path:
+            self.items_path = "../foragym/data/items_with_threat.csv"
+        else:
+            self.items_path = items_path
+
+        self.num_days = 8
+        self.num_life_points = 7
         self.done = False
+        self.switch = 0
 
-        self.forest_quality = np.arange(0.5, 0.8, 0.1)
-        self.forest_qualities_list = [(i,j) for i, j in product(self.forest_quality, self.forest_quality) if i < j]
-        self.num_forest_qualities = len(self.forest_qualities_list)
-
-        self.threat_encounter = np.arange(0.1, 0.4, 0.1)
-        self.threat_encounter_list = [(i,j) for i, j in product(self.threat_encounter, self.threat_encounter) if i != j]
-        self.num_threat_encounter = len(self.threat_encounter_list)
-
-        self.forest = [((i, k), (j, l)) for ((i, j), (k, l)) in product(self.forest_qualities_list, self.threat_encounter_list)]
-        self.num_forest = len(self.forest)
+        self.forests = self._get_forests(self.items_path)
+        self.num_forests = len(self.forests)
 
         self.num_envs = 2
 
-        self.nS = (
-            self.num_days_left * self.num_life_points_left * self.num_forest
-        )
+        self.nS = self.num_days * self.num_life_points * self.num_forests
         self.nA = len(self.action_dict)
 
         self._get_transition_matrix()
 
-        self.action_space = spaces.Discrete(self.nA)
         self.observation_space = spaces.Dict(
             {
-                "days_left": spaces.Discrete(self.num_days_left),
-                "life_points_left": spaces.Discrete(self.num_life_points_left),
-                "forest_type": spaces.Discrete(self.num_forest)
+                "days_left": spaces.Discrete(self.num_days),
+                "life_points_left": spaces.Discrete(self.num_life_points),
+                "environment": spaces.Box(low=0, high=2.0, shape=(3,), dtype=np.float32),
             }
         )
-
+        self.action_space = spaces.Discrete(self.nA)
         self._init_episode()
+
+    def _get_forests(self, items_path):
+        return pd.read_csv(items_path)
+
+    def _get_consequences(self, payload):
+        if payload["consequence_id"] == 0 and payload["action"] == 1:
+            transition_prob = (1 - payload["forest_quality_left"]) * (1 - payload["threat_encounter_left"])
+        elif payload["consequence_id"] == 1 and payload["action"] == 1:
+            transition_prob = (1 - payload["forest_quality_right"]) * (1 - payload["threat_encounter_right"])
+        elif payload["consequence_id"] == 2 and payload["action"] == 1:
+            transition_prob = payload["forest_quality_left"] * (1 - payload["threat_encounter_left"])
+        elif payload["consequence_id"] == 3 and payload["action"] == 1:
+            transition_prob = payload["forest_quality_right"] * (1 - payload["threat_encounter_right"])
+        elif payload["consequence_id"] == 4 and payload["action"] == 1:
+            transition_prob = payload["threat_encounter_left"]
+        elif payload["consequence_id"] == 5 and payload["action"] == 1:
+            transition_prob = payload["threat_encounter_right"]
+        elif payload["consequence_id"] == 6 and payload["action"] == 0:
+            transition_prob = 2
+        else:
+            return []
+
+        transition_prob /= self.num_envs
+
+        new_days_left = payload["days_left"] - 1
+
+        if payload["consequence_id"] in (0, 1) and payload["action"] == 1:
+            new_life_points_left = payload["life_points_left"] - 2
+        elif payload["consequence_id"] == 2 and payload["action"] == 1:
+            new_life_points_left = payload["life_points_left"] + payload["nutritional_quality_left"]
+        elif payload["consequence_id"] == 3 and payload["action"] == 1:
+            new_life_points_left = payload["life_points_left"] + payload["nutritional_quality_right"]
+        elif payload["consequence_id"] in (4, 5) and payload["action"] == 1:
+            new_life_points_left = payload["life_points_left"] - 3
+        elif payload["consequence_id"] == 6 and payload["action"] == 0:
+            new_life_points_left = payload["life_points_left"] - 1
+        else:
+            return []
+
+        new_life_points_left = np.clip(new_life_points_left, 0, self.num_life_points - 1)
+
+        new_enc_state = self.encode(
+            new_days_left, new_life_points_left, payload["forest_type"]
+        )
+
+        if not new_life_points_left:
+            reward = -1
+            done = True
+        elif not new_days_left:
+            reward = 0
+            done = True
+        else:
+            reward = 0
+            done = False
+
+        return [transition_prob, new_enc_state, reward, done]
 
     def _get_transition_matrix(self):
         self.P = {
-            state: {action: [] for action in range(self.nA)}
-            for state in range(self.nS)
+            state: {action: [] for action in range(self.nA)} for state in range(self.nS)
         }
 
-        for days_left in range(1, self.num_days_left):
-            for life_points_left in range(1, self.num_life_points_left):
-                for forest_type in range(self.num_forest):
+        for days_left in range(1, self.num_days):
+            for life_points_left in range(1, self.num_life_points):
+                for forest_type in range(self.num_forests):
                     enc_state = self.encode(days_left, life_points_left, forest_type)
 
-                    (forest_quality_left, threat_encounter_left), (forest_quality_right, threat_encounter_right) = self.forest[forest_type]
+                    forest_quality_left = self.forests.loc[self.forests["forest_type"] == forest_type, "forest_quality_left"].values[0]
+                    threat_encounter_left = self.forests.loc[self.forests["forest_type"] == forest_type, "threat_encounter_left"].values[0]
+                    nutritional_quality_left = self.forests.loc[self.forests["forest_type"] == forest_type, "nutritional_quality_left"].values[0]
+                    forest_quality_right = self.forests.loc[self.forests["forest_type"] == forest_type, "forest_quality_right"].values[0]
+                    threat_encounter_right = self.forests.loc[self.forests["forest_type"] == forest_type, "threat_encounter_right"].values[0]
+                    nutritional_quality_right = self.forests.loc[self.forests["forest_type"] == forest_type, "nutritional_quality_right"].values[0]
+
 
                     for action in range(self.nA):
-                        if action:
-                            # forage, no threat but fail (left)
-                            new_days_left = np.clip(days_left - 1, 0, self.num_days_left)
-                            new_life_points_left = np.clip(life_points_left - 2, 0, self.num_life_points_left - 1)
-                            new_forest_type = forest_type
+                        for consequence_id in range(0, len(self.consequences_dict)):
+                            payload = {}
+                            payload["days_left"] = days_left
+                            payload["life_points_left"] = life_points_left
+                            payload["forest_type"] = forest_type
+                            payload["forest_quality_left"] = forest_quality_left
+                            payload["threat_encounter_left"] = threat_encounter_left
+                            payload["nutritional_quality_left"] = nutritional_quality_left
+                            payload["forest_quality_right"] = forest_quality_right
+                            payload["threat_encounter_right"] = threat_encounter_right
+                            payload["nutritional_quality_right"] = nutritional_quality_right
+                            payload["action"] = action
+                            payload["consequence_id"] = consequence_id
 
-                            prob =  np.clip((1 - forest_quality_left)*(1 - threat_encounter_left), 0, 1) / 2
-                            new_enc_state = self.encode(new_days_left, new_life_points_left, new_forest_type)
-                            if not new_life_points_left:
-                                reward = -1
-                                done = True
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
-                            elif not new_days_left:
-                                reward = 0
-                                done = True
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
-                            else:
-                                reward = 0
-                                done = False
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
+                            payload["result"] = self._get_consequences(payload)
 
-                            # forage, no threat but fail (right)
-                            new_days_left = np.clip(days_left - 1, 0, self.num_days_left)
-                            new_life_points_left = np.clip(life_points_left - 2, 0, self.num_life_points_left - 1)
-                            new_forest_type = forest_type
-
-                            prob =  np.clip((1 - forest_quality_right)*(1 - threat_encounter_right), 0, 1) / 2
-                            new_enc_state = self.encode(new_days_left, new_life_points_left, new_forest_type)
-                            if not new_life_points_left:
-                                reward = -1
-                                done = True
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
-                            elif not new_days_left:
-                                reward = 0
-                                done = True
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
-                            else:
-                                reward = 0
-                                done = False
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
-                            
-
-                            # forage, no threat and succeed (left)
-                            new_days_left = np.clip(days_left - 1, 0, self.num_days_left)
-                            new_life_points_left = np.clip(life_points_left + 1, 0, self.num_life_points_left - 1)
-                            new_forest_type = forest_type
-
-                            prob = np.clip(((forest_quality_left)*(1 - threat_encounter_left)), 0, 1) / 2
-                            new_enc_state = self.encode(new_days_left, new_life_points_left, new_forest_type)
-                            if not new_life_points_left:
-                                reward = -1
-                                done = True
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
-                            elif not new_days_left:
-                                reward = 0
-                                done = True
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
-                            else:
-                                reward = 0
-                                done = False
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
-
-                            # forage, no threat and succeed (right)
-                            new_days_left = np.clip(days_left - 1, 0, self.num_days_left)
-                            new_life_points_left = np.clip(life_points_left + 1, 0, self.num_life_points_left - 1)
-                            new_forest_type = forest_type
-
-                            prob = np.clip(((forest_quality_right)*(1 - threat_encounter_right)), 0, 1) / 2
-                            new_enc_state = self.encode(new_days_left, new_life_points_left, new_forest_type)
-                            if not new_life_points_left:
-                                reward = -1
-                                done = True
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
-                            elif not new_days_left:
-                                reward = 0
-                                done = True
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
-                            else:
-                                reward = 0
-                                done = False
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
-
-                            # forage but threat found (left)
-                            new_days_left = np.clip(days_left - 1, 0, self.num_days_left)
-                            new_life_points_left = np.clip(life_points_left - 3, 0, self.num_life_points_left - 1)
-                            new_forest_type = forest_type
-
-                            prob = threat_encounter_left / 2
-                            new_enc_state = self.encode(new_days_left, new_life_points_left, new_forest_type)
-                            if not new_life_points_left:
-                                reward = -1
-                                done = True
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
-                            elif not new_days_left:
-                                reward = 0
-                                done = True
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
-                            else:
-                                reward = 0
-                                done = False
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
-
-                            # forage but threat found (right)
-                            new_days_left = np.clip(days_left - 1, 0, self.num_days_left)
-                            new_life_points_left = np.clip(life_points_left - 3, 0, self.num_life_points_left - 1)
-                            new_forest_type = forest_type
-
-                            prob = threat_encounter_right / 2
-                            new_enc_state = self.encode(new_days_left, new_life_points_left, new_forest_type)
-                            if not new_life_points_left:
-                                reward = -1
-                                done = True
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
-                            elif not new_days_left:
-                                reward = 0
-                                done = True
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
-                            else:
-                                reward = 0
-                                done = False
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
-                        else:
-                            # wait
-                            new_days_left = np.clip(days_left - 1, 0, self.num_days_left)
-                            new_life_points_left = np.clip(life_points_left - 1, 0, self.num_life_points_left - 1)
-                            new_forest_type = forest_type
-
-                            prob = 1
-                            new_enc_state = self.encode(new_days_left, new_life_points_left, new_forest_type)
-                            if not new_life_points_left:
-                                reward = -1
-                                done = True
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
-                            elif not new_days_left:
-                                reward = 0
-                                done = True
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
-                            else:
-                                reward = 0
-                                done = False
-                                self.P[enc_state][action].append([prob, new_enc_state, reward, done])
+                            if payload["result"]:
+                                self.P[enc_state][action].append(payload["result"])
 
     def _init_episode(self):
-        self.days_left = self.num_days_left - 1
+        self.days_left = self.num_days - 1
 
         self.life_points_left = 0
         while self.life_points_left < 4:
             self.life_points_left = self.observation_space["life_points_left"].sample()
 
-        self.forest_type = self.observation_space["forest_type"].sample()
+        self.forest_type = np.random.random_integers(0, self.num_forests - 1)
+
+        self.forest_quality_left = self.forests.loc[self.forests["forest_type"] == self.forest_type, "forest_quality_left"].values[0]
+        self.threat_encounter_left = self.forests.loc[self.forests["forest_type"] == self.forest_type, "threat_encounter_left"].values[0]
+        self.nutritional_quality_left = self.forests.loc[self.forests["forest_type"] == self.forest_type, "nutritional_quality_left"].values[0]
+        self.forest_quality_right = self.forests.loc[self.forests["forest_type"] == self.forest_type, "forest_quality_right"].values[0]
+        self.threat_encounter_right = self.forests.loc[self.forests["forest_type"] == self.forest_type, "threat_encounter_right"].values[0]
+        self.nutritional_quality_right = self.forests.loc[self.forests["forest_type"] == self.forest_type, "nutritional_quality_right"].values[0]
 
     def encode(self, days_left, life_points_left, forest_type):
         enc_state = days_left
 
-        enc_state *= self.num_life_points_left
+        enc_state *= self.num_life_points
         enc_state += life_points_left
 
-        enc_state *= self.num_forest
+        enc_state *= self.num_forests
         enc_state += forest_type
 
         return enc_state
 
     def decode(self, enc_state):
         out = []
-        out.append(enc_state % self.num_forest)
-        enc_state = enc_state // self.num_forest
+        out.append(enc_state % self.num_forests)
+        enc_state = enc_state // self.num_forests
 
-        out.append(enc_state % self.num_life_points_left)
-        enc_state = enc_state // self.num_life_points_left
+        out.append(enc_state % self.num_life_points)
+        enc_state = enc_state // self.num_life_points
 
         out.append(enc_state)
 
         return list(reversed(out))
 
     def _get_obs(self):
-        (forest_quality_left, threat_encounter_left), (forest_quality_right, threat_encounter_right) = self.forest[self.forest_type]
-
 
         return {
-            "days_left": self.days_left,
-            "life_points": self.life_points_left,
-            "forest_quality_left": forest_quality_left,
-            "forest_quality_right": forest_quality_right,
-            "threat_encounter_left": threat_encounter_left,
-            "threat_encounter_right": threat_encounter_right
+            "days_left": int(self.days_left),
+            "life_points_left": int(self.life_points_left),
+            "environment": np.array(
+                [
+                    self.forest_quality,
+                    self.threat_encounter,
+                    self.nutritional_quality
+                ],
+                dtype=np.float32,
+            ),
         }
-
-    def step(self, action):
-        if self.days_left <= 0:
-            self.done = True
-            return self._get_obs(), reward, self.done, {"consequence": self.consequence_dict[consequence_id]}
-
-        enc_state = self.encode(self.days_left, self.life_points_left, self.forest_type)
-        P = self.P[enc_state][action]
-        
-        if action:
-            probs = [prob for (prob, _, _, _) in P]
-            consequence_id = np.random.choice(np.arange(0, 6), p=probs)
-            prob, new_enc_state, reward, self.done = P[consequence_id]
-        else:
-            consequence_id = 0
-            prob, new_enc_state, reward, self.done = P[0]
-
-        self.days_left, self.life_points_left, _ = self.decode(new_enc_state)
-
-        if self.render_mode == "human":
-            self._render_text()
-
-        return self._get_obs(), reward, self.done, {"consequence": self.consequence_dict[consequence_id]}
 
     def reset(self, seed=None, options=None):
         # super().reset(seed=seed)
 
         self._init_episode()
 
-        if self.render_mode == "human":
-            self._render_text()
+        self.env_choice = np.random.choice([0, 1])
 
-        obs = self._get_obs()
-        info = {}
-        
-        return obs, info
+        if self.env_choice:
+            self.forest_quality = self.forest_quality_left
+            self.threat_encounter = self.threat_encounter_left
+            self.nutritional_quality = self.nutritional_quality_left
+        else:
+            self.forest_quality = self.forest_quality_right
+            self.threat_encounter = self.threat_encounter_right
+            self.nutritional_quality = self.nutritional_quality_right
+
+        if self.render_mode == "human":
+            self.render_text(is_start=True)
+
+        return self._get_obs()
 
     def render(self):
         if self.render_mode == "human":
-            self._render_text()
+            self.render_text()
 
-    def _render_text(self):
-        (forest_quality_left, threat_encounter_left), (forest_quality_right, threat_encounter_right) = self.forest[self.forest_type]
-
+    def render_text(self, is_start=False):
+        if is_start:
+            print(
+                f"--Forest Quality for the left environment: {self.forest_quality_left:.2f}"
+            )
+            print(
+                f"--Threat Encounter probability for the left environment: {self.threat_encounter_left:.2f}"
+            )
+            print(
+                f"--Nutritional Quality for the left environment: {self.nutritional_quality_left:.2f}"
+            )
+            print(
+                f"--Forest Quality for the right environment: {self.forest_quality_right:.2f}"
+            )
+            print(
+                f"--Threat Encounter probability for the right environment: {self.threat_encounter_right:.2f}"
+            )
+            print(
+                f"--Nutritional Quality for the right environment: {self.nutritional_quality_right:.2f}"
+            )
+            print("-"*10)
+            print("")
+        else:
+            print(f'--Consequence: {self.consequences_dict[self.consequence_id]}')
+            print(f"--Reward?: {self.reward}")
+            print(f"--Episode done?: {self.done}")
 
         print(f"--Days left: {self.days_left}")
         print(f"--Current life: {self.life_points_left}")
-        print(f"--Forest Quality for the left environment: {forest_quality_left:.2f}")
-        print(f"--Forest Quality for the right environment: {forest_quality_right:.2f}")
-        print(f"--Threat Encounter probability for the left environment: {threat_encounter_left:.2f}")
-        print(f"--Threat Encounter probability for the right environment: {threat_encounter_right:.2f}")
+        print(
+            f"--Current Forest Quality: {self.forest_quality:.2f}"
+        )
+        print(
+            f"--Current Threat Encounter probability: {self.threat_encounter:.2f}"
+        )
+        print(
+            f"--Current Nutritional Quality: {self.nutritional_quality:.2f}"
+        )
 
     def close(self):
         pass
+
+    def step(self, action):
+        if self.days_left <= 0:
+            self.done = True
+            return (
+                self._get_obs(),
+                self.reward,
+                self.done,
+                {"switch": self.switch}
+            )
+
+        enc_state = self.encode(self.days_left, self.life_points_left, self.forest_type)
+        P = self.P[enc_state][action]
+
+        if action:
+            probs = [prob for (prob, _, _, _) in P]
+            if self.env_choice:
+                probs = [i*2 for i in probs[::2]]
+            else:
+                probs = [i*2 for i in probs[1::2]]
+            self.consequence_id = np.random.choice(np.arange(0, 3), p=probs)
+            if self.env_choice:
+                self.consequence_id *= 2
+            else:
+                self.consequence_id = self.consequence_id * 2 + 1
+            prob, new_enc_state, self.reward, self.done = P[self.consequence_id]
+        else:
+            self.consequence_id = 6
+            prob, new_enc_state, self.reward, self.done = P[0]
+
+        self.env_choice = np.random.choice([0, 1])
+        if self.env_choice:
+            self.forest_quality = self.forest_quality_left
+            self.threat_encounter = self.threat_encounter_left
+            self.nutritional_quality = self.nutritional_quality_left
+        else:
+            self.forest_quality = self.forest_quality_right
+            self.threat_encounter = self.threat_encounter_right
+            self.nutritional_quality = self.nutritional_quality_right
+
+        self.days_left, self.life_points_left, _ = self.decode(new_enc_state)
+
+        if self.render_mode == "human":
+            self.render_text(is_start=False)
+
+        return (
+            self._get_obs(),
+            float(self.reward),
+            self.done,
+            {"switch": self.switch}
+        )
