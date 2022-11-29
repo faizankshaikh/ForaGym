@@ -4,6 +4,7 @@ import pandas as pd
 from gym import spaces, Env
 from itertools import product
 
+
 class ForaGym_with_threat(Env):
     """
     """
@@ -21,7 +22,7 @@ class ForaGym_with_threat(Env):
             "Right environment / Forage successful / No threat encountered",
             "Left environment / Forage failed / Threat encountered",
             "Right environment / Forage failed / Threat encountered",
-            "Waited"
+            "Waited",
         ]
         self.consequences_dict = dict(zip(np.arange(0, 7), consequences))
 
@@ -49,7 +50,9 @@ class ForaGym_with_threat(Env):
             {
                 "days_left": spaces.Discrete(self.num_days),
                 "life_points_left": spaces.Discrete(self.num_life_points),
-                "environment": spaces.Box(low=0, high=2.0, shape=(3,), dtype=np.float32),
+                "environment": spaces.Box(
+                    low=0, high=2.0, shape=(3,), dtype=np.float32
+                ),
             }
         )
         self.action_space = spaces.Discrete(self.nA)
@@ -60,13 +63,21 @@ class ForaGym_with_threat(Env):
 
     def _get_consequences(self, payload):
         if payload["consequence_id"] == 0 and payload["action"] == 1:
-            transition_prob = (1 - payload["forest_quality_left"]) * (1 - payload["threat_encounter_left"])
+            transition_prob = (1 - payload["forest_quality_left"]) * (
+                1 - payload["threat_encounter_left"]
+            )
         elif payload["consequence_id"] == 1 and payload["action"] == 1:
-            transition_prob = (1 - payload["forest_quality_right"]) * (1 - payload["threat_encounter_right"])
+            transition_prob = (1 - payload["forest_quality_right"]) * (
+                1 - payload["threat_encounter_right"]
+            )
         elif payload["consequence_id"] == 2 and payload["action"] == 1:
-            transition_prob = payload["forest_quality_left"] * (1 - payload["threat_encounter_left"])
+            transition_prob = payload["forest_quality_left"] * (
+                1 - payload["threat_encounter_left"]
+            )
         elif payload["consequence_id"] == 3 and payload["action"] == 1:
-            transition_prob = payload["forest_quality_right"] * (1 - payload["threat_encounter_right"])
+            transition_prob = payload["forest_quality_right"] * (
+                1 - payload["threat_encounter_right"]
+            )
         elif payload["consequence_id"] == 4 and payload["action"] == 1:
             transition_prob = payload["threat_encounter_left"]
         elif payload["consequence_id"] == 5 and payload["action"] == 1:
@@ -83,9 +94,13 @@ class ForaGym_with_threat(Env):
         if payload["consequence_id"] in (0, 1) and payload["action"] == 1:
             new_life_points_left = payload["life_points_left"] - 2
         elif payload["consequence_id"] == 2 and payload["action"] == 1:
-            new_life_points_left = payload["life_points_left"] + payload["nutritional_quality_left"]
+            new_life_points_left = (
+                payload["life_points_left"] + payload["nutritional_quality_left"]
+            )
         elif payload["consequence_id"] == 3 and payload["action"] == 1:
-            new_life_points_left = payload["life_points_left"] + payload["nutritional_quality_right"]
+            new_life_points_left = (
+                payload["life_points_left"] + payload["nutritional_quality_right"]
+            )
         elif payload["consequence_id"] in (4, 5) and payload["action"] == 1:
             new_life_points_left = payload["life_points_left"] - 3
         elif payload["consequence_id"] == 6 and payload["action"] == 0:
@@ -93,7 +108,9 @@ class ForaGym_with_threat(Env):
         else:
             return []
 
-        new_life_points_left = np.clip(new_life_points_left, 0, self.num_life_points - 1)
+        new_life_points_left = np.clip(
+            new_life_points_left, 0, self.num_life_points - 1
+        )
 
         new_enc_state = self.encode(
             new_days_left, new_life_points_left, payload["forest_type"]
@@ -121,13 +138,30 @@ class ForaGym_with_threat(Env):
                 for forest_type in range(self.num_forests):
                     enc_state = self.encode(days_left, life_points_left, forest_type)
 
-                    forest_quality_left = self.forests.loc[self.forests["forest_type"] == forest_type, "forest_quality_left"].values[0]
-                    threat_encounter_left = self.forests.loc[self.forests["forest_type"] == forest_type, "threat_encounter_left"].values[0]
-                    nutritional_quality_left = self.forests.loc[self.forests["forest_type"] == forest_type, "nutritional_quality_left"].values[0]
-                    forest_quality_right = self.forests.loc[self.forests["forest_type"] == forest_type, "forest_quality_right"].values[0]
-                    threat_encounter_right = self.forests.loc[self.forests["forest_type"] == forest_type, "threat_encounter_right"].values[0]
-                    nutritional_quality_right = self.forests.loc[self.forests["forest_type"] == forest_type, "nutritional_quality_right"].values[0]
-
+                    forest_quality_left = self.forests.loc[
+                        self.forests["forest_type"] == forest_type,
+                        "forest_quality_left",
+                    ].values[0]
+                    threat_encounter_left = self.forests.loc[
+                        self.forests["forest_type"] == forest_type,
+                        "threat_encounter_left",
+                    ].values[0]
+                    nutritional_quality_left = self.forests.loc[
+                        self.forests["forest_type"] == forest_type,
+                        "nutritional_quality_left",
+                    ].values[0]
+                    forest_quality_right = self.forests.loc[
+                        self.forests["forest_type"] == forest_type,
+                        "forest_quality_right",
+                    ].values[0]
+                    threat_encounter_right = self.forests.loc[
+                        self.forests["forest_type"] == forest_type,
+                        "threat_encounter_right",
+                    ].values[0]
+                    nutritional_quality_right = self.forests.loc[
+                        self.forests["forest_type"] == forest_type,
+                        "nutritional_quality_right",
+                    ].values[0]
 
                     for action in range(self.nA):
                         for consequence_id in range(0, len(self.consequences_dict)):
@@ -137,10 +171,14 @@ class ForaGym_with_threat(Env):
                             payload["forest_type"] = forest_type
                             payload["forest_quality_left"] = forest_quality_left
                             payload["threat_encounter_left"] = threat_encounter_left
-                            payload["nutritional_quality_left"] = nutritional_quality_left
+                            payload[
+                                "nutritional_quality_left"
+                            ] = nutritional_quality_left
                             payload["forest_quality_right"] = forest_quality_right
                             payload["threat_encounter_right"] = threat_encounter_right
-                            payload["nutritional_quality_right"] = nutritional_quality_right
+                            payload[
+                                "nutritional_quality_right"
+                            ] = nutritional_quality_right
                             payload["action"] = action
                             payload["consequence_id"] = consequence_id
 
@@ -158,12 +196,24 @@ class ForaGym_with_threat(Env):
 
         self.forest_type = np.random.random_integers(0, self.num_forests - 1)
 
-        self.forest_quality_left = self.forests.loc[self.forests["forest_type"] == self.forest_type, "forest_quality_left"].values[0]
-        self.threat_encounter_left = self.forests.loc[self.forests["forest_type"] == self.forest_type, "threat_encounter_left"].values[0]
-        self.nutritional_quality_left = self.forests.loc[self.forests["forest_type"] == self.forest_type, "nutritional_quality_left"].values[0]
-        self.forest_quality_right = self.forests.loc[self.forests["forest_type"] == self.forest_type, "forest_quality_right"].values[0]
-        self.threat_encounter_right = self.forests.loc[self.forests["forest_type"] == self.forest_type, "threat_encounter_right"].values[0]
-        self.nutritional_quality_right = self.forests.loc[self.forests["forest_type"] == self.forest_type, "nutritional_quality_right"].values[0]
+        self.forest_quality_left = self.forests.loc[
+            self.forests["forest_type"] == self.forest_type, "forest_quality_left"
+        ].values[0]
+        self.threat_encounter_left = self.forests.loc[
+            self.forests["forest_type"] == self.forest_type, "threat_encounter_left"
+        ].values[0]
+        self.nutritional_quality_left = self.forests.loc[
+            self.forests["forest_type"] == self.forest_type, "nutritional_quality_left"
+        ].values[0]
+        self.forest_quality_right = self.forests.loc[
+            self.forests["forest_type"] == self.forest_type, "forest_quality_right"
+        ].values[0]
+        self.threat_encounter_right = self.forests.loc[
+            self.forests["forest_type"] == self.forest_type, "threat_encounter_right"
+        ].values[0]
+        self.nutritional_quality_right = self.forests.loc[
+            self.forests["forest_type"] == self.forest_type, "nutritional_quality_right"
+        ].values[0]
 
     def encode(self, days_left, life_points_left, forest_type):
         enc_state = days_left
@@ -194,11 +244,7 @@ class ForaGym_with_threat(Env):
             "days_left": int(self.days_left),
             "life_points_left": int(self.life_points_left),
             "environment": np.array(
-                [
-                    self.forest_quality,
-                    self.threat_encounter,
-                    self.nutritional_quality
-                ],
+                [self.forest_quality, self.threat_encounter, self.nutritional_quality],
                 dtype=np.float32,
             ),
         }
@@ -248,24 +294,18 @@ class ForaGym_with_threat(Env):
             print(
                 f"--Nutritional Quality for the right environment: {self.nutritional_quality_right:.2f}"
             )
-            print("-"*10)
+            print("-" * 10)
             print("")
         else:
-            print(f'--Consequence: {self.consequences_dict[self.consequence_id]}')
+            print(f"--Consequence: {self.consequences_dict[self.consequence_id]}")
             print(f"--Reward?: {self.reward}")
             print(f"--Episode done?: {self.done}")
 
         print(f"--Days left: {self.days_left}")
         print(f"--Current life: {self.life_points_left}")
-        print(
-            f"--Current Forest Quality: {self.forest_quality:.2f}"
-        )
-        print(
-            f"--Current Threat Encounter probability: {self.threat_encounter:.2f}"
-        )
-        print(
-            f"--Current Nutritional Quality: {self.nutritional_quality:.2f}"
-        )
+        print(f"--Current Forest Quality: {self.forest_quality:.2f}")
+        print(f"--Current Threat Encounter probability: {self.threat_encounter:.2f}")
+        print(f"--Current Nutritional Quality: {self.nutritional_quality:.2f}")
 
     def close(self):
         pass
@@ -273,12 +313,7 @@ class ForaGym_with_threat(Env):
     def step(self, action):
         if self.days_left <= 0:
             self.done = True
-            return (
-                self._get_obs(),
-                self.reward,
-                self.done,
-                {"switch": self.switch}
-            )
+            return (self._get_obs(), self.reward, self.done, {"switch": self.switch})
 
         enc_state = self.encode(self.days_left, self.life_points_left, self.forest_type)
         P = self.P[enc_state][action]
@@ -286,9 +321,9 @@ class ForaGym_with_threat(Env):
         if action:
             probs = [prob for (prob, _, _, _) in P]
             if self.env_choice:
-                probs = [i*2 for i in probs[::2]]
+                probs = [i * 2 for i in probs[::2]]
             else:
-                probs = [i*2 for i in probs[1::2]]
+                probs = [i * 2 for i in probs[1::2]]
             self.consequence_id = np.random.choice(np.arange(0, 3), p=probs)
             if self.env_choice:
                 self.consequence_id *= 2
@@ -314,9 +349,4 @@ class ForaGym_with_threat(Env):
         if self.render_mode == "human":
             self.render_text(is_start=False)
 
-        return (
-            self._get_obs(),
-            float(self.reward),
-            self.done,
-            {"switch": self.switch}
-        )
+        return (self._get_obs(), float(self.reward), self.done, {"switch": self.switch})
