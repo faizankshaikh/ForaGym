@@ -34,7 +34,7 @@ class ForaGym_with_threat(Env):
         self.num_days = 8
         self.num_life_points = 7
         self.done = False
-        self.switch = 0
+        self.env_choice = 0
 
         self.forests = self._get_forests(self.items_path)
         self.num_forests = len(self.forests)
@@ -313,7 +313,7 @@ class ForaGym_with_threat(Env):
     def step(self, action):
         if self.days_left <= 0:
             self.done = True
-            return (self._get_obs(), self.reward, self.done, {"switch": self.switch})
+            return (self._get_obs(), self.reward, self.done, {"env_choice": self.env_choice})
 
         enc_state = self.encode(self.days_left, self.life_points_left, self.forest_type)
         P = self.P[enc_state][action]
@@ -349,4 +349,4 @@ class ForaGym_with_threat(Env):
         if self.render_mode == "human":
             self.render_text(is_start=False)
 
-        return (self._get_obs(), float(self.reward), self.done, {"switch": self.switch})
+        return (self._get_obs(), float(self.reward), self.done, {"env_choice": self.env_choice})
