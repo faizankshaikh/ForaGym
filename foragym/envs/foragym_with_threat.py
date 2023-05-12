@@ -27,7 +27,7 @@ class ForaGym_with_threat(Env):
         self.consequences_dict = dict(zip(np.arange(0, 7), consequences))
 
         if not items_path:
-            self.items_path = "../foragym/data/items_with_threat.csv"
+            self.items_path = "foragym/data/items_with_threat.csv"
         else:
             self.items_path = items_path
 
