@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from gym import spaces, Env
+from gymnasium import spaces, Env
 from itertools import product
 
 
@@ -9,7 +9,7 @@ class ForaGym_with_threat(Env):
     """
     """
 
-    metadata = {"render_mode": ["human"]}
+    metadata = {"render_modes": ["human"]}
 
     def __init__(self, render_mode=None, items_path=""):
         self.render_mode = render_mode
@@ -194,7 +194,7 @@ class ForaGym_with_threat(Env):
         while self.life_points_left < 4:
             self.life_points_left = self.observation_space["life_points_left"].sample()
 
-        self.forest_type = np.random.random_integers(0, self.num_forests - 1)
+        self.forest_type = np.random.randint(0, self.num_forests - 1)
 
         self.forest_quality_left = self.forests.loc[
             self.forests["forest_type"] == self.forest_type, "forest_quality_left"
@@ -250,7 +250,7 @@ class ForaGym_with_threat(Env):
         }
 
     def reset(self, seed=None, options=None):
-        # super().reset(seed=seed)
+        super().reset(seed=seed)
 
         self._init_episode()
 
@@ -268,7 +268,7 @@ class ForaGym_with_threat(Env):
         if self.render_mode == "human":
             self.render_text(is_start=True)
 
-        return self._get_obs()
+        return self._get_obs(), {"env_choice": self.env_choice}
 
     def render(self):
         if self.render_mode == "human":
@@ -313,7 +313,7 @@ class ForaGym_with_threat(Env):
     def step(self, action):
         if self.days_left <= 0:
             self.done = True
-            return (self._get_obs(), self.reward, self.done, {"env_choice": self.env_choice})
+            return self._get_obs(), self.reward, self.done, False, {"env_choice": self.env_choice}
 
         enc_state = self.encode(self.days_left, self.life_points_left, self.forest_type)
         P = self.P[enc_state][action]
@@ -349,4 +349,4 @@ class ForaGym_with_threat(Env):
         if self.render_mode == "human":
             self.render_text(is_start=False)
 
-        return (self._get_obs(), float(self.reward), self.done, {"env_choice": self.env_choice})
+        return self._get_obs(), float(self.reward), self.done, False, {"env_choice": self.env_choice}
