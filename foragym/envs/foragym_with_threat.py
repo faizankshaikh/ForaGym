@@ -31,7 +31,7 @@ class ForaGym_with_threat(Env):
         else:
             self.items_path = items_path
 
-        self.num_days = 8
+        self.num_days = 9
         self.num_life_points = 7
         self.done = False
         self.env_choice = 0
@@ -189,11 +189,8 @@ class ForaGym_with_threat(Env):
 
     def _init_episode(self):
         self.days_left = self.num_days - 1
-
-        self.life_points_left = 0
-        while self.life_points_left < 4:
-            self.life_points_left = self.observation_space["life_points_left"].sample()
-
+        
+        self.life_points_left = np.random.randint(4, 6)
         self.forest_type = np.random.randint(0, self.num_forests - 1)
 
         self.forest_quality_left = self.forests.loc[
