@@ -6,8 +6,7 @@ from itertools import product
 
 
 class ForaGym_with_threat(Env):
-    """
-    """
+    """ """
 
     metadata = {"render_modes": ["human"]}
 
@@ -189,7 +188,7 @@ class ForaGym_with_threat(Env):
 
     def _init_episode(self):
         self.days_left = self.num_days - 1
-        
+
         self.life_points_left = np.random.randint(4, 6)
         self.forest_type = np.random.randint(0, self.num_forests - 1)
 
@@ -236,7 +235,6 @@ class ForaGym_with_threat(Env):
         return list(reversed(out))
 
     def _get_obs(self):
-
         return {
             "days_left": int(self.days_left),
             "life_points_left": int(self.life_points_left),
@@ -265,7 +263,15 @@ class ForaGym_with_threat(Env):
         if self.render_mode == "human":
             self.render_text(is_start=True)
 
-        return self._get_obs(), {"env_choice": self.env_choice}
+        return self._get_obs(), {
+            "env_choice": self.env_choice,
+            "forest_quality_left": self.forest_quality_left,
+            "threat_encounter_left": self.threat_encounter_left,
+            "nutritional_quality_left": self.nutritional_quality_left,
+            "forest_quality_right": self.forest_quality_right,
+            "threat_encounter_right": self.threat_encounter_right,
+            "nutritional_quality_right": self.nutritional_quality_right,
+        }
 
     def render(self):
         if self.render_mode == "human":
@@ -310,7 +316,13 @@ class ForaGym_with_threat(Env):
     def step(self, action):
         if self.days_left <= 0:
             self.done = True
-            return self._get_obs(), self.reward, self.done, False, {"env_choice": self.env_choice}
+            return (
+                self._get_obs(),
+                self.reward,
+                self.done,
+                False,
+                {"env_choice": self.env_choice},
+            )
 
         enc_state = self.encode(self.days_left, self.life_points_left, self.forest_type)
         P = self.P[enc_state][action]
@@ -346,4 +358,18 @@ class ForaGym_with_threat(Env):
         if self.render_mode == "human":
             self.render_text(is_start=False)
 
-        return self._get_obs(), float(self.reward), self.done, False, {"env_choice": self.env_choice}
+        return (
+            self._get_obs(),
+            float(self.reward),
+            self.done,
+            False,
+            {
+                "env_choice": self.env_choice,
+                "forest_quality_left": self.forest_quality_left,
+                "threat_encounter_left": self.threat_encounter_left,
+                "nutritional_quality_left": self.nutritional_quality_left,
+                "forest_quality_right": self.forest_quality_right,
+                "threat_encounter_right": self.threat_encounter_right,
+                "nutritional_quality_right": self.nutritional_quality_right,
+            },
+        )
